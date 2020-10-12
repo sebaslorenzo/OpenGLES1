@@ -3,6 +3,7 @@ package com.example.admin.opengles1;
 import android.graphics.Bitmap;
 import android.opengl.GLES20;
 import android.opengl.GLUtils;
+import android.support.annotation.NonNull;
 import android.util.Log;
 import android.opengl.Matrix;
 
@@ -58,6 +59,7 @@ class bone
     public float angle;
     public int parent;
     public float[] matriz;      // rotacion de pose final-compuesta desde el root
+    public float[] matrizInv;   // (inversa) rotacion de pose final-compuesta desde el root
     public float[] matrizLocal; // rotacion de pose del hueso respecto de su padre
 
     public bone(int numero, String nombre)
@@ -65,6 +67,7 @@ class bone
         //id=numero;
         name=nombre;
         matriz=new float[16];
+        matrizInv=new float[16];
         matrizLocal=new float[16];
         parent=-1;
     }
@@ -74,26 +77,26 @@ class bone
 class keyFrameDef
 {
     Float time;
-    public float xRot,yRot,zRot;
-    public float angle;
-    public keyFrameDef(float tiempo) {time=tiempo;xRot=yRot=zRot=xTra=yTra=zTra=0;}
-    public float xTra, yTra, zTra;
+    public float xRot,yRot,zRot;    // vector de rotacion relativo al rest position
+    public float angle;             // angulo de rotacion relativo al rest position
+    public keyFrameDef(float tiempo) {time=tiempo;xRot=yRot=zRot=xTra=yTra=zTra=0;xSca=ySca=zSca=1;}
+    public float xTra, yTra, zTra;  // traslacion desde el rest position
+    public float xSca, ySca, zSca;  // scale
 }
 
 class keyFrame
 {
-    int keyFrameIndex;
-    public keyFrame(int index) {keyFrameIndex=index;matriz=new float[16];matrizFinal=new float[16];}
-    public float[] matriz;      // rotacion diferencial (temporal) compuesta desde el root
-    public float[] matrizFinal; // rotacion compuesta total desde el root
-    public float aSlerp;        // keyframe interpolations, angle
-    public float v1Slerp, v2Slerp, v3Slerp;    // keyframe interpolations, rotation vector
-    public float xSlerp, ySlerp, zSlerp;    // keyframe interpolations, traslation
+    public float[] matriz=new float[16];        // rotacion total compuesta desde el root
+    // slerp equivalente a matriz, es relativa al hueso y se usa para mover mesh
+    // se usan solo en los casos en que se interpola entre frames
+    public float aSlerp;                        // keyframe interpolations, angle
+    public float v1Slerp, v2Slerp, v3Slerp;     // keyframe interpolations, rotation vector
+    public float xSlerp, ySlerp, zSlerp;        // keyframe interpolations, traslation
 }
 
 class track
 {
-    String name;
+    public String name;
     int id;
     public float length;
     public ArrayList<keyFrame> keyFrames;
@@ -101,11 +104,12 @@ class track
     public track() {keyFrames=new ArrayList<keyFrame>();keyFrameDefs=null;}
 }
 
-class soundEvent {
-    public String filename;
+enum eventType {sound, message};
+
+class actionEvent {
+    public eventType kind;
     public float time;
-    public float right;
-    public float left;
+    public String payload;
 }
 
 class animation
@@ -115,12 +119,13 @@ class animation
     public int numFrames;           // largo en frames
     public ArrayList<track> tracks; // lista de huesos
     public int currentTrack;        // es el track que se esta usando en la carga del cfg
-    public ArrayList<soundEvent> soundEvents;
+    public ArrayList<actionEvent> actionEvents;
+
     public animation(String nombre, float largo) {
         name=nombre;
         length=largo;
         tracks=new ArrayList<track>();
-        soundEvents=new ArrayList<soundEvent>();
+        actionEvents=new ArrayList<actionEvent>();
     }
 }
 
@@ -184,12 +189,12 @@ public class meshReader
     // crea el mesh a partir de la lestura de uno o mas archivos Ogre3d
     public meshReader(String filename)
     {
-        readMesh(filename+ ".xml");
+        readMesh(filename+ ".mesh.xml");
         if(skeleton) {
             //readSkeleton(skeletonName + ".xml");
             readSkeleton(filename+".skeleton.xml");
             calcMatrices();
-            readSkeletonSound(filename+".sound.xml");
+            readSkeletonEvents(filename+".event.xml");
             //dump(3,0,1);
             //dump2(3,0,1, 0.01f);
         }
@@ -742,11 +747,27 @@ public class meshReader
                 }
         ));
 
+        reglas.add(new rule(
+                new String[]{"skeleton","animations","animation","tracks","track","keyframes","keyframe","scale"},
+                new cadaTag() {
+                    public void leerTag(XmlPullParser xpp)
+                    {
+                        Log.d("myTag", "bone/scale");
+                        animation lastAnim=animaciones.get(animaciones.size()-1);
+                        track lastTrack=lastAnim.tracks.get(lastAnim.currentTrack);
+                        keyFrameDef lastKeyFrame=lastTrack.keyFrameDefs.get(lastTrack.keyFrameDefs.size()-1);
+                        lastKeyFrame.xSca=Float.parseFloat(xpp.getAttributeValue(null, "x"));
+                        lastKeyFrame.ySca=Float.parseFloat(xpp.getAttributeValue(null, "y"));
+                        lastKeyFrame.zSca=Float.parseFloat(xpp.getAttributeValue(null, "z"));
+                    }
+                }
+        ));
+
         readXml(filename, reglas, uri);
     }
 
     // lee un archivo con la info de los sonidos de la animacion
-    public void readSkeletonSound(String filename)
+    public void readSkeletonEvents(String filename)
     {
         ArrayList<String> uri=new ArrayList<String>();
         ArrayList<rule> reglas=new ArrayList<rule>();
@@ -767,21 +788,18 @@ public class meshReader
         ));
 
         reglas.add(new rule(
-                new String[]{"animations","animation","sounds","sound"},
+                new String[]{"animations","animation","events","sound"},
                 new cadaTag() {
                     public void leerTag(XmlPullParser xpp)
                     {
                         Log.d("myTag", "animation/sound");
-                        String filename=xpp.getAttributeValue(null, "file");
                         float time=Float.parseFloat(xpp.getAttributeValue(null, "time"));
-                        float right=Float.parseFloat(xpp.getAttributeValue(null, "right"));
-                        float left=Float.parseFloat(xpp.getAttributeValue(null, "left"));
-                        soundEvent se=new soundEvent();
-                        se.filename=filename;
-                        se.right=right;
-                        se.left=left;
-                        se.time=time;
-                        animaciones.get(lastAnimation).soundEvents.add(se);
+                        String filename=xpp.getAttributeValue(null, "payload");
+                        actionEvent ae=new actionEvent();
+                        ae.kind=eventType.sound;
+                        ae.payload=filename;
+                        ae.time=time;
+                        animaciones.get(lastAnimation).actionEvents.add(ae);
                     }
                 }
         ));
@@ -822,6 +840,7 @@ public class meshReader
                     b.matrizLocal[13] = b.yCoord;
                     b.matrizLocal[14] = b.zCoord;
                     Matrix.multiplyMM(b.matriz, 0, pm, 0, b.matrizLocal, 0);
+                    Matrix.invertM(b.matrizInv, 0, b.matriz,0);
                     todo.add(bi);
                 }
             }
@@ -837,7 +856,7 @@ public class meshReader
                 t.id=h;
                 // creo los keyFrames
                 for( int i=0; i<a.numFrames; i++)
-                    t.keyFrames.add(new keyFrame(h)); // el indice o el hueso?
+                    t.keyFrames.add(new keyFrame());
             }
 
             todo.add(-1);   //padres analizados, arranca con los root que tienen padre -1
@@ -851,8 +870,9 @@ public class meshReader
                         for (int fn=0; fn<t.keyFrames.size();fn++) {
                             keyFrame kf=t.keyFrames.get(fn);
                             pm = idMat;
-                            float tx, ty, tz; // de la accion
+                            float tx, ty, tz, sx, sy, sz; // de la accion
                             tx=ty=tz=0;
+                            sx=sy=sz=1;
 
                             if (b.parent != -1)
                                 pm = a.tracks.get(bId).keyFrames.get(fn).matriz;
@@ -865,35 +885,37 @@ public class meshReader
                                     scratch2 = idMat.clone();
                                 else
                                     Matrix.setRotateM(scratch2, 0, kfd.angle * 180 / (float) PI, kfd.xRot, kfd.yRot, kfd.zRot);
-                                tx=kfd.xTra;  // antes o despues???
+                                tx=kfd.xTra;  // translation: antes o despues???
                                 ty=kfd.yTra;
                                 tz=kfd.zTra;
+                                sx=kfd.xSca;  // scale: antes o despues???
+                                sy=kfd.ySca;
+                                sz=kfd.zSca;
                             }
 
                             // mat rel del hueso=mat rel en pose * movimiento en el frame
                             Matrix.multiplyMM(scratch, 0, b.matrizLocal, 0, scratch2, 0);
+                            Matrix.scaleM(scratch,0,sx,sy,sz);
                             scratch[12]+=tx;
                             scratch[13]+=ty;
                             scratch[14]+=tz;
 
                             // mat final-compuesta del hueso=mat del padre*mat rel hueso
                             Matrix.multiplyMM(kf.matriz, 0, pm, 0, scratch, 0);
-
-                            Matrix.invertM(scratch, 0, b.matriz, 0);
-                            Matrix.multiplyMM(kf.matrizFinal, 0, kf.matriz, 0, scratch, 0);
                         }
                         todo.add(t.id);
                     }
                 }
             }
         }
+
         for( animation a : animaciones) {
             for (track t : a.tracks) {
                 for (int fn=0; fn<t.keyFrames.size()-1;fn++) {
                     keyFrame kf1=t.keyFrames.get(fn);
                     keyFrame kf2=t.keyFrames.get(fn+1);
-                    Matrix.invertM(scratch2,0,kf1.matrizFinal,0);
-                    Matrix.multiplyMM(scratch, 0, scratch2, 0, kf2.matrizFinal, 0);
+                    Matrix.invertM(scratch2,0,kf1.matriz,0);
+                    Matrix.multiplyMM(scratch, 0, scratch2, 0, kf2.matriz, 0);
                     double angle=safeacos((scratch[0]+scratch[5]+scratch[10]-1)/2); // Radians
                     // vector y angulo para interpolar ambas rotaciones
                     kf1.aSlerp=(float)(angle* 180 / (float) PI);  // Degrees
@@ -911,29 +933,34 @@ public class meshReader
     }
 
     // Dados dos frames consecutivos calcula la matriz de un tiempo intermedio
-    public void interMatrix(float[] output, int offset, int animId, int boneId, float frameTime)
+    // matriz relativa al objeto
+    public void interMatrix(float[] output, int offset, int animId, int boneId, float frameTime, boolean highDef)
     {
         animation a=animaciones.get(animId);
         track tr=a.tracks.get(boneId);
 
         if(tr!=null)    // hay data para el hueso, se mueve!!!
         {
-            int fn = (int)frameTime;    // Frame number
-            float ii=frameTime-fn;     // range[0,1)
+            if(highDef) {
+                int fn = (int) frameTime;    // Frame number
+                float ii = frameTime - fn;     // range[0,1)
 
-            keyFrame kf = tr.keyFrames.get(fn);
-            if (Math.abs(kf.aSlerp) > 0.00001)
-                Matrix.setRotateM(scratch, 0, kf.aSlerp * (float) ii, kf.v1Slerp, kf.v2Slerp, kf.v3Slerp);
+                keyFrame kf = tr.keyFrames.get(fn);
+                if (Math.abs(kf.aSlerp) > 0.00001)
+                    Matrix.setRotateM(scratch, 0, kf.aSlerp * (float) ii, kf.v1Slerp, kf.v2Slerp, kf.v3Slerp);
+                else
+                    Matrix.setIdentityM(scratch, 0);
+                scratch[12] = kf.xSlerp * ii;
+                scratch[13] = kf.ySlerp * ii;
+                scratch[14] = kf.zSlerp * ii;
+                Matrix.multiplyMM(output, offset, kf.matriz, 0, scratch, 0);
+            }
             else
-                Matrix.setIdentityM(scratch, 0);
-            scratch[12] = kf.xSlerp * ii;
-            scratch[13] = kf.ySlerp * ii;
-            scratch[14] = kf.zSlerp * ii;
-            Matrix.multiplyMM(output, offset, kf.matrizFinal, 0, scratch, 0);
+                System.arraycopy(a.tracks.get(boneId).keyFrames.get(Math.round(frameTime)).matriz, 0, output, offset, 16);
             //Log.d("MyApp", "time:" + String.valueOf(rt)+outMat(output,offset));
         }
         else    // ningun movimiento para este hueso
-            Matrix.setIdentityM(output,offset);
+            System.arraycopy(huesos.get(boneId).matriz, 0, output, offset, 16);
     }
 
     String outMat(float[] mat, int offset)
@@ -1015,6 +1042,15 @@ public class meshReader
     {
         return Math.acos(Math.max(Math.min(x,1),-1));
     }
+
+    int getBoneIdByName(String name)
+    {
+        for(int i=0;i<huesos.size(); i++) {
+            if (huesos.get(i).name.equals(name))
+                return i;
+        }
+        return -1;
+    }
 }
 
 // manejador de meshes con un catalogo
@@ -1061,6 +1097,7 @@ class entity extends node
     public boolean debug=false;
     public float[] color = new float[4];
     private boolean visible=true;
+    int id=0;
 
     public entity(String name)
     {
@@ -1085,6 +1122,8 @@ class entity extends node
         actionInstructionList=null;
     }
 
+    public void setId(int _id) {id=_id;}
+    public int getId() {return id;}
     void setVisible(boolean v) {visible=v;}
     boolean isVisible() {return visible;}
 
@@ -1149,46 +1188,59 @@ class entity extends node
     // devuelve si la ultima accion termino
     public boolean isAminDone()
     {
-        return actionList.size()==0?false:actionList.get(actionList.size() - 1).looping==mode.stopped;
+        return actionList.size()==0 || actionList.get(actionList.size() - 1).looping==mode.stopped;
+    }
+
+    public float frameNumber(int actionIndex)
+    {
+        float fn;
+        actionState as;
+        animation an;
+        as=actionList.get(actionIndex);
+        an=mesh.animaciones.get(as.actionId);
+
+        if(as.looping==mode.stopped)
+            fn=an.numFrames-1;  // ultimo frame
+        else if(as.time==0)
+            fn=0;               // primer frame
+        else                    // ej: 3,5 es 3er frame a medio camino con el 4to
+            fn=((an.numFrames - 1) / (an.length / as.time));
+
+        return fn;
     }
 
     // toma la pila de animaciones activas y las blendea con el peso correspondiente
-    public void getAnimMatrix(float[] dest)
+    // matriz relativa al rest position.
+    public void getAnimMatrix(float[] dest, boolean highDef)
     {
         float[] scratch=new float[16];
         float[] scratch2=new float[16];
         float[] scratch3=new float[16];
-        int boneNum=mesh.huesos.size();
-        float fn;
-        actionState as;
-        animation an;
 
-        for(int i=0; i<boneNum; i++)    // para cada hueso
+        Matrix.setIdentityM(scratch,0);
+
+        for(int i=0; i<mesh.huesos.size(); i++)    // para cada hueso
         {
-            Matrix.setIdentityM(scratch,0);
-            for(int a=0; a<actionList.size();a++)   // para cada accion de la lista apilada
+            for (int a=0; a<actionList.size(); a++)   // para cada accion de la lista apilada
             {
-                as=actionList.get(a);
-                an=mesh.animaciones.get(as.actionId);
-
-                if(as.looping==mode.stopped)
-                    fn=an.numFrames-1;  // ultimo frame
-                else if(as.time==0)
-                    fn=0;               // primer frame
-                else                    // ej: 3,5 es 3er frame a medio camino con el 4to
-                    fn=((an.numFrames - 1) / (an.length / as.time));
-
-                mesh.interMatrix(scratch2,0, as.actionId, i, fn);
-                blendMatrix(scratch3, scratch, scratch2,1-actionList.get(a).weight);
-                scratch=scratch3.clone();
+                float fn=frameNumber(a);
+                if (a == 0)
+                    mesh.interMatrix(scratch, 0, actionList.get(a).actionId, i, fn, highDef);
+                else {
+                    mesh.interMatrix(scratch2, 0, actionList.get(a).actionId, i, fn, highDef);
+                    blendMatrix(scratch3, scratch, scratch2, 1 - actionList.get(a).weight);
+                    System.arraycopy(scratch3, 0, scratch, 0, 16);
+                }
             }
-            // Copio la matriz resultado
-            System.arraycopy(scratch,0,dest,i*16,16);
+            // Copio la matriz resultado haciendola relativa al rest position
+            Matrix.multiplyMM(dest, i*16, scratch,0,mesh.huesos.get(i).matrizInv,0);
+            //Matrix.multiplyMM(dest, i*16, mesh.huesos.get(i).matrizInv,0,scratch,0);
         }
     }
 
     // dadas dos matrices las interpola con un peso dado para la segunda
-    private void blendMatrix(float[] dest, float[] mat1, float[] mat2, float weight)
+    // https://mycourses.aalto.fi/pluginfile.php/371079/mod_resource/content/1/05_quaternions.pdf
+    private void blendMatrix(float[] dest, @NonNull float[] mat1, @NonNull float[] mat2, float weight)
     {
         float[] scratch = new float[16];
         float[] scratch2 = new float[16];
@@ -1199,6 +1251,11 @@ class entity extends node
         float xSlerp;
         float ySlerp;
         float zSlerp;
+
+        float[] t1 = new float[3];
+        float[] t2 = new float[3];
+        t1[0]=mat1[12];t1[1]=mat1[13];t1[2]=mat1[14];
+        t2[0]=mat2[12];t2[1]=mat1[13];t2[2]=mat1[14];
 
         Matrix.invertM(scratch,0,mat1,0);
         Matrix.multiplyMM(scratch2, 0, scratch, 0, mat2, 0);
@@ -1227,6 +1284,54 @@ class entity extends node
         scratch[13] = ySlerp*weight;
         scratch[14] = zSlerp*weight;
         Matrix.multiplyMM(dest, 0, mat1, 0, scratch, 0);
+    }
+
+    private void blendMatrix2(float[] dest, float[] m1, float[] m2, float weight)
+    {
+        float[] mat1 = new float[16];
+        float[] mat2 = new float[16];
+
+        for(int i=0; i<16; i++) {
+            if(i==12 || i==13 || i==14) {
+                mat1[i] = 0;
+                mat2[i] = 0;
+            }
+            else {
+                mat1[i] = m1[i];
+                mat2[i] = m2[i];
+            }
+        }
+
+        float[] scratch = new float[16];
+        float[] scratch2 = new float[16];
+        float aSlerp;
+        float v1Slerp;
+        float v2Slerp;
+        float v3Slerp;
+
+        Matrix.invertM(scratch,0,mat1,0);
+        Matrix.multiplyMM(scratch2, 0, scratch, 0, mat2, 0);
+        double angle=safeacos((scratch2[0]+scratch2[5]+scratch2[10]-1)/2); // Radians
+        aSlerp = (float) (angle * 180 / (float) PI);  // Degrees
+
+        // vector y angulo para interpolar ambas rotaciones
+        if( Math.abs(angle)>0.0001 ) {
+            double divisor = 2 * Math.sin(angle);
+            v1Slerp = (float) ((scratch2[6] - scratch2[9]) / divisor);
+            v2Slerp = (float) ((scratch2[8] - scratch2[2]) / divisor);
+            v3Slerp = (float) ((scratch2[1] - scratch2[4]) / divisor);
+        }
+        else
+        {
+            v1Slerp=1;
+            v2Slerp=v3Slerp=0;
+        }
+
+        Matrix.setRotateM(scratch, 0, (aSlerp*weight), v1Slerp, v2Slerp, v3Slerp);
+        Matrix.multiplyMM(dest, 0, mat1, 0, scratch, 0);
+        dest[12] = m1[12]+(m2[12]-m1[12])*weight;
+        dest[13] = m1[13]+(m2[13]-m1[13])*weight;
+        dest[14] = m1[14]+(m2[14]-m1[14])*weight;
     }
 
     // se asegura el rango de entrada para que no devuelve NaN

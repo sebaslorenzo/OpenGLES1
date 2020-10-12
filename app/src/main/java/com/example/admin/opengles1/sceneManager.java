@@ -12,6 +12,8 @@ import android.util.Log;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+
 import static android.opengl.GLES20.glUniform4fv;
 import static java.lang.Math.PI;
 
@@ -131,6 +133,16 @@ class sceneable extends movable
         return scratch;
     }
 
+    public float[] getWorldLocation()
+    {
+        float[] scratch=getWorldMatrix();
+        float[] scratch2=new float[3];
+        scratch2[0]=scratch[12];
+        scratch2[1]=scratch[13];
+        scratch2[2]=scratch[14];
+        return scratch2;
+    }
+
     public void enable() {active=true;}
     public void disable() {active=false;}
     public boolean isEnabled() {return active;}
@@ -239,9 +251,24 @@ class node extends sceneable
     }
 }
 
+// guarda una copia de las entidades de la escena y las posiciones del objeto y huesos para usar en este ciclo
+class entityPhoto
+{
+    entity entityCopy;
+    float[] rotPosCopy;
+    float[] skeletonCopy;
+
+    public entityPhoto(entity e, float[] pr, float[] s)
+    {
+        entityCopy=e;
+        rotPosCopy=pr;
+        skeletonCopy=s;
+    }
+}
+
 public class sceneManager {
     public node root;
-    private camera viewPort;
+    public camera viewPort;
     public long time;
     private float deltatime;
     float actionTime;
@@ -255,6 +282,8 @@ public class sceneManager {
     public static final float[] ejeYn = {0, -1, 0, 1};
     public static final float[] ejeZn = {0, 0, -1, 1};
     public float[] mProjectionMatrix = new float[16];
+    public List<entityPhoto> scenePhoto;
+    public static sceneManager activeSceneManager;
 
     private final String vertexShaderCode =
     "uniform vec4 uColor;" +    // color de base del objeto
@@ -280,9 +309,11 @@ public class sceneManager {
     "        index=int(vIndex.x);"+
     "        newVertex = (uBone[index] * vPosition) * vWeight.x;"+
     "        newNormal = (uBone[index] * normalShift)   * vWeight.x;"+
-    "        index=int(vIndex.y);"+
-    "        newVertex = (uBone[index] * vPosition) * vWeight.y + newVertex;"+
-    "        newNormal = (uBone[index] * normalShift)   * vWeight.y + newNormal;"+
+    "        if(vWeight.y > 0.0) {"+
+    "            index=int(vIndex.y);"+
+    "            newVertex = (uBone[index] * vPosition) * vWeight.y + newVertex;"+
+    "            newNormal = (uBone[index] * normalShift)   * vWeight.y + newNormal;"+
+    "        }"+
     "    } else {"+
     "        newVertex = vPosition;"+
     "        newNormal = normalShift;"+
@@ -320,11 +351,14 @@ public class sceneManager {
 
     void draw()
     {
+        activeSceneManager=this;
         ArrayList<entity> objetos=new ArrayList<>();
         ArrayList<float[]> gpos=new ArrayList<>();
 
-        // lista los objetos y recalcula cada accion
-        listNodes(root,root.getMatrixClone(), objetos, gpos);
+        // genera la photo de las entidades de la escena para usar
+        scenePhoto.clear();
+        // lista los objetos, recalcula cada accion y guarda posiciones (objeto y huesos)
+        listNodes(root,root.getMatrixClone());
 
         viewPort.calcViewMatrix(mProjectionMatrix);
         // general settings
@@ -336,9 +370,9 @@ public class sceneManager {
         // Fresh start, clear buffers
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
 
-        for(int i=0; i<objetos.size(); i++)
-            if(objetos.get(i).isVisible())
-                drawMesh(objetos.get(i), gpos.get(i));
+        for(int i=0; i<scenePhoto.size(); i++)
+            if(scenePhoto.get(i).entityCopy.isVisible())
+                drawMesh(scenePhoto.get(i).entityCopy, scenePhoto.get(i).rotPosCopy, scenePhoto.get(i).skeletonCopy);
     }
 
     public float deltaTime()
@@ -361,39 +395,24 @@ public class sceneManager {
         time=System.currentTimeMillis();
     }
 
-    void listNodes(node n, float[] pRotPos, ArrayList<entity> objetos, ArrayList<float[]> matrices) {
+    void listNodes(node n, float[] pRotPos) {
         float[] scratch = new float[16];
 
         for (sceneable c : n.children) {
             if( c.isEnabled()) {
                 if (c.isDrawable()) {
-                    Matrix.multiplyMM(scratch, 0, pRotPos, 0, c.getMatrixClone(), 0);
-                    ((entity) c).addTime(deltatime);
-                    objetos.add(((entity) c));
-                    matrices.add(scratch.clone());
+                    entity e=(entity)c;
+                    Matrix.multiplyMM(scratch, 0, pRotPos, 0, e.getMatrixClone(), 0);
+                    e.addTime(deltatime);
+                    float[] matHuesos = new float[16 * e.mesh.huesos.size()];
+                    e.getAnimMatrix(matHuesos, false);  // no interpola entre frames, toma el mas cercano
+                    scenePhoto.add(new entityPhoto(e,scratch.clone(),matHuesos));
+                    //objetos.add(((entity) c));
+                    //matrices.add(scratch.clone());
                 }
                 if (c.isParent()) {
                     Matrix.multiplyMM(scratch, 0, pRotPos, 0, c.getMatrixClone(), 0);
-                    listNodes((node) c, scratch, objetos, matrices);
-                }
-            }
-        }
-    }
-
-    void drawNode(node n, float[] pRotPos, float dt) {
-        float[] scratch = new float[16];
-
-        for (sceneable c : n.children) {
-            if( c.isEnabled()) {
-                if (c.isDrawable()) {
-                    Matrix.multiplyMM(scratch, 0, pRotPos, 0, c.getMatrixClone(), 0);
-                    ((entity) c).addTime(dt);   // suma tiempos y calcula las accions
-                    // real opengl draw
-                    drawMesh((entity) c, scratch);
-                }
-                if (c.isParent()) {
-                    Matrix.multiplyMM(scratch, 0, pRotPos, 0, c.getMatrixClone(), 0);
-                    drawNode((node) c, scratch, dt);
+                    listNodes((node) c, scratch);
                 }
             }
         }
@@ -415,6 +434,7 @@ public class sceneManager {
         deltatime=0;
         actionTime=0;
         lightSource=new float[4];
+        scenePhoto=new ArrayList<entityPhoto>();
 
         int vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, vertexShaderCode);
         int fragmentShader = loadShader(GLES20.GL_FRAGMENT_SHADER, fragmentShaderCode);
@@ -468,7 +488,11 @@ public class sceneManager {
         }
     }
 
-    public void drawMesh(entity e, float[] posRot) {
+    public void drawMesh(entity e, float[] posRot, float[] skeletonMatices) {
+        drawMesh(e, posRot, skeletonMatices, false);
+    }
+
+    public void drawMesh(entity e, float[] posRot, float[] skeletonMatices, boolean isRigidBody) {
         float[] mMVPMatrix = new float[16];
         int vertexStride = COORDS_PER_VERTEX * 4; // 4 bytes per vertex
         int indexStride = 2 * 4; // 4 bytes per vertex
@@ -476,6 +500,7 @@ public class sceneManager {
         boolean isTextured;
 
         meshReader m = e.mesh;
+
         // Add program to OpenGL ES environment
         GLES20.glUseProgram(mProgram);
 
@@ -511,10 +536,12 @@ public class sceneManager {
         assert mPositionHandle >= 0 : "Error al cargar mPositionHandle";
         GLES20.glEnableVertexAttribArray(mPositionHandle);
 
-        if (!e.debug)
+        if (!e.debug)   // normal
             GLES20.glVertexAttribPointer(mPositionHandle, COORDS_PER_VERTEX, GLES20.GL_FLOAT, false, vertexStride, m.vertexBuffer);
-        else
+        else if(!isRigidBody)   // debug del ojeto
             GLES20.glVertexAttribPointer(mPositionHandle, COORDS_PER_VERTEX, GLES20.GL_FLOAT, false, vertexStride, m._vertexBuffer);
+        else    // debug del rigidbody
+            GLES20.glVertexAttribPointer(mPositionHandle, COORDS_PER_VERTEX, GLES20.GL_FLOAT, false, vertexStride, ((rigidBody)e)._vertexBuffer);
 
         int mNormalHandle = GLES20.glGetAttribLocation(mProgram, "vNormal");
         assert mNormalHandle >= 0 : "Error al cargar mNormalHandle";
@@ -522,8 +549,10 @@ public class sceneManager {
 
         if (!e.debug)
             GLES20.glVertexAttribPointer(mNormalHandle, COORDS_PER_VERTEX, GLES20.GL_FLOAT, true, vertexStride, m.normalBuffer);
-        else
+        else if(!isRigidBody)   // debug del objeto
             GLES20.glVertexAttribPointer(mNormalHandle, COORDS_PER_VERTEX, GLES20.GL_FLOAT, true, vertexStride, m._normalBuffer);
+        else    // debug del rigidbody
+            GLES20.glVertexAttribPointer(mNormalHandle, COORDS_PER_VERTEX, GLES20.GL_FLOAT, true, vertexStride, ((rigidBody)e)._normalBuffer);
 
         int mMVPMatrixHandle = GLES20.glGetUniformLocation(mProgram, "uMVPMatrix");
         assert mMVPMatrixHandle >= 0 : "Error al cargar mMVPMatrixHandle";
@@ -545,17 +574,20 @@ public class sceneManager {
             if (!e.debug) {
                 GLES20.glVertexAttribPointer(mIndexHandle, 2, GLES20.GL_FLOAT, true, indexStride, m.boneBuffer);
                 GLES20.glVertexAttribPointer(mWeightHandle, 2, GLES20.GL_FLOAT, true, indexStride, m.weightBuffer);
-            } else {
+            } else if(!isRigidBody){
                 GLES20.glVertexAttribPointer(mIndexHandle, 2, GLES20.GL_FLOAT, true, indexStride, m._boneBuffer);
                 GLES20.glVertexAttribPointer(mWeightHandle, 2, GLES20.GL_FLOAT, true, indexStride, m._weightBuffer);
+            } else {
+                GLES20.glVertexAttribPointer(mIndexHandle, 2, GLES20.GL_FLOAT, true, indexStride, ((rigidBody)e)._boneBuffer);
+                GLES20.glVertexAttribPointer(mWeightHandle, 2, GLES20.GL_FLOAT, true, indexStride, ((rigidBody)e)._weightBuffer);
             }
             long t0=System.currentTimeMillis();
             // ponder aca la maxima cantidad de huesos
-            float[] matrices = new float[16 * m.huesos.size()];
-            e.getAnimMatrix(matrices);
+            //float[] matrices = new float[16 * m.huesos.size()];
+            //e.getAnimMatrix(matrices);
             Log.d("MyApp", "Time esqueleto: "+(System.currentTimeMillis()-t0));
 
-            GLES20.glUniformMatrix4fv(mBoneHandle, m.huesos.size(), false, matrices, 0);
+            GLES20.glUniformMatrix4fv(mBoneHandle, m.huesos.size(), false, skeletonMatices, 0);
         } else {
             // los mando a alguna info cualquiera
             GLES20.glVertexAttribPointer(mIndexHandle, 2, GLES20.GL_FLOAT, true, indexStride, m.vertexBuffer);
@@ -583,13 +615,29 @@ public class sceneManager {
             // Draw the triangles
             GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, m.vertexCount);
         }
-        else    //debug
+        else if(!isRigidBody)    //debug comun
         {
             // Draw the lines
             GLES20.glLineWidth(3.0f);
             GLES20.glDrawArrays(GLES20.GL_LINES, 0, m._vertexCount);
         }
+        else    //debug rigidbody
+        {
+            // Draw the lines
+            GLES20.glLineWidth(3.0f);
+            GLES20.glDrawArrays(GLES20.GL_LINES, 0, ((rigidBody)e)._vertexCount);
+        }
         GLES20.glDisableVertexAttribArray(mPositionHandle);
+        if(e.debug && e.isDinamic() && !isRigidBody) {
+            if(!((rigidBody)e).OGL_Calc)
+                ((rigidBody)e).createOpenGlVars();
+            drawMesh(e, posRot, skeletonMatices, true);
+        }
+    }
+
+    void takeScenePhoto()
+    {
+
     }
 }
 
@@ -812,15 +860,17 @@ class actionState
 
     public void addTime(float dt)
     {
-        // si hhay que mezclar y queda todavia fuerza en la accion secundaria
+        // si hay que mezclar y queda todavia fuerza en la accion secundaria
         if(blend>0 && weight>0.0f)
             weight=Math.max(weight-dt/blend,0.0f);
+        else
+            weight=0;
 
-        for(int i=0; i<anim.soundEvents.size();i++)
+        for(int i=0; i<anim.actionEvents.size();i++)
         {
-            soundEvent se=anim.soundEvents.get(i);
-            if(time<se.time && se.time<time+dt)
-                soundManager.getInstance().playSound(se.filename, se.right, se.left);
+            actionEvent ae=anim.actionEvents.get(i);
+            if( ae.kind==eventType.sound && time<ae.time && ae.time<time+dt)
+                soundManager.getInstance().playSound(ae.payload, 0.5f, 0.5f);
         }
         switch(looping)
         {

@@ -14,6 +14,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
     private camera followCam;
     private sceneManager scene;
     private puppet ent;
+    private robot rob;
     private rigidBody cubeEnt;
     private entity luz;
     private long ultimo=System.currentTimeMillis();
@@ -40,9 +41,23 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
         xcam.lookAt(new float[] {0,0,1.0f},new float[]{0,1.0f,0});
         xcam.setParent(scene.root);
 
-        ent=new puppet("minecraft", 1,1);
-        ent.debug=false; ent.color[1]=0.0f;ent.color[2]=0.0f;
+        ent=new puppet("minecraft");
+        //ent.addFixedSpace(0.4f,2,3,false,true);
+        ent.addBoneRelatedSpace(0.1f, 0.1f,"ball_r",0.09f, true, false);
+        ent.addBoneRelatedSpace(0.1f, 0.1f, "ball_l",0.09f, true, false);
+        ent.debug=true; ent.color[0]=1.0f;ent.color[1]=0.0f;ent.color[2]=0.0f;
         ent.setParent(scene.root);
+
+        rob=new robot("minecraft");
+        //rob.addFixedSpace(0.4f,1.2f,3.5f,false,true);
+        rob.addBoneRelatedSpace(0.4f, 1.2f,"spine_01",0.0f, false, true);
+        rob.addBoneRelatedSpace(0.3f, 0.5f,"head",0.0f, false, true);
+        rob.addBoneRelatedSpace(0.1f, 0.1f,"ball_r",0.09f, true, false);
+        rob.addBoneRelatedSpace(0.1f, 0.1f, "ball_l",0.09f, true, false);
+        rob.debug=true; rob.color[0]=1.0f;rob.color[1]=0.0f;rob.color[2]=0.0f;
+        rob.setParent(scene.root);
+        rob.setLocation(3,0,10);
+        rob.setId(1);
 
         followCam.setLocation(0,5,-5.0f);
         followCam.lookAt(new float[] {0,2.0f,1.0f},new float[]{0,1.0f,0});
@@ -61,8 +76,9 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
         rf=new rigidFloor(c2);
         scene.attachToPhisics(rf);
 
-        cubeEnt=new rigidBody("piramid", 1,0);
-        cubeEnt.debug=false; cubeEnt.color[0]=0.0f;cubeEnt.color[1]=0.0f;
+        cubeEnt=new rigidBody("piramid");
+        cubeEnt.addFixedSpace(1.0f,0,1.0f, true, false);
+        cubeEnt.debug=true; cubeEnt.color[0]=0.0f;cubeEnt.color[1]=0.0f;
         cubeEnt.setParent(scene.root);
         cubeEnt.setLocation(1,5.0f,1.0f);
 
@@ -83,7 +99,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
         long t0=System.currentTimeMillis();
         touchManager tm=touchManager.getInstance();
 
-        float a=(System.currentTimeMillis()-ultimo)/300.0f;
+        float a=(System.currentTimeMillis()-ultimo)/600.0f;
         float b=20.0f*(float)Math.cos(a);
         Log.d("MyApp", "Luz: "+a+":"+b);
 
@@ -122,6 +138,8 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
         long t2=System.currentTimeMillis();
 
         ent.makeItAlive(vMover, vAng, tm.getField(1).getClick(), deltaT);
+        rob.makeItAlive(deltaT);
+        rob.testShot(deltaT);
 
         long t3=System.currentTimeMillis();
 
