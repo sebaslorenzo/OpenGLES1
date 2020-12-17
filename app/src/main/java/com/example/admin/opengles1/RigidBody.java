@@ -93,82 +93,6 @@ class Triangle
 
     public int vertexPosition(int i) { return i*4;}
 
-    // calcula si un tringulo intersecta con una esfera y devuelve cuanto deberia moverse para evitarlo
-    public boolean old_test(float[] centro, float radio, float[] reaccion)
-    {
-        float[] cartePos=new float[4];  // cartesiano
-        float[] baryPos=new float[4];   // baricentrico?
-
-        for(int i=0;i<3;i++)
-            cartePos[i]=centro[i]+reaccion[i];
-        cartePos[3]=1;
-
-        // Fuera de zona limite de influencia, primer chequeo
-        for(int i=0;i<3;i++)
-            if(cartePos[i]+radio<limInf[i] || cartePos[i]-radio>limSup[i])
-                return false;
-
-        // Convierto a coordenadas barycentricas
-        Matrix.multiplyMV(baryPos,0,bMat,0,cartePos,0);
-
-        // fuera del triangulo o mas lejos que el radio
-        if(baryPos[0]<0 || baryPos[1]<0 || baryPos[0]+baryPos[1]>1 || Math.abs(baryPos[2])>radio)
-            return false;
-
-        for(int i=0;i<3;i++)
-            reaccion[i]+= normal[i]*(radio-baryPos[2]);
-
-        return true;
-    }
-
-    // calcula si una esfera que parte de origen y se mueve delta intersecta con un triangulo
-    public boolean test(int id, float[] origen, float[] delta, float radio, float dt)
-    {
-        // Fuera de zona limite de influencia, primer chequeo
-        for(int i=0;i<3;i++) {
-            if (Math.max(origen[i], origen[i] + delta[i]) + radio < limInf[i] || Math.min(origen[i], origen[i] + delta[i]) - radio > limSup[i])
-                return false;
-        }
-
-        // (O+d.U+-r.N-C).N=0   O=origen, C=punto del plano, r=radio, d=incognita distancia, U=direccion del mov, N=normal)
-        // se despeja d=-(O-C+-r.N).N / U.N
-        // dir compensa la direccion arbitraria de la normal respecto del delta
-        float dir=Math.signum(Physics.dot(normal,delta));
-        float[] ocrn=new float[3];
-        for(int i=0;i<3;i++)
-            ocrn[i]=origen[i]-vertex[i]+dir*radio*normal[i];
-
-        float deltaNormal=Physics.dot(delta,normal);
-        if( Math.abs(deltaNormal)<0.00001f )
-            return false;   // movimiento paralelo al plano del triangulo?
-
-        // d repesenta a cuantos deltas intersecta la esfera con el plano
-        float d=-Physics.dot(ocrn,normal)/deltaNormal;
-        if(Math.abs(d)>1)
-            return false;   // se aleja o no llego al plano
-
-        float[] cartePos=new float[4];  // cartesiano
-        float[] baryPos=new float[4];   // baricentrico?
-
-        for(int i=0;i<3;i++)
-            cartePos[i]=origen[i]+delta[i]*d;
-        cartePos[3]=1;
-
-        // Convierto a coordenadas barycentricas
-        Matrix.multiplyMV(baryPos,0,bMat,0,cartePos,0);
-
-        // fuera del triangulo o mas lejos que el radio
-        if(baryPos[0]<0 || baryPos[1]<0 || baryPos[0]+baryPos[1]>1)
-            return false;
-
-        Log.d("MyApp", "Test: ID="+id+";Origen="+origen[1]+";Delta="+delta[0]+";"+delta[1]+";"+delta[2]+";Normal="+normal[1]+";DN="+deltaNormal+";Plano="+ vertex[1]+";radio="+radio+";d="+d);
-
-        for (int i = 0; i < 3; i++)
-            delta[i] -= normal[i] * (1 - d) * deltaNormal;
-
-        return true;
-    }
-
     // calcula si una esfera que parte de origen y se mueve delta intersecta con un triangulo, parte interna
     // devuelve la distancia recorida (% de delta) o Float.MAX_VALUE si no colisiona
     public boolean getCollision2Triangle(int id, float[] origen, float[] delta, float radio, float dt)
@@ -182,17 +106,17 @@ class Triangle
         // (O+d.U+-r.N-C).N=0   O=origen, C=punto del plano, r=radio, d=incognita distancia, U=direccion del mov, N=normal)
         // se despeja d=-(O-C+-r.N).N / U.N
         // dir compensa la direccion arbitraria de la normal respecto del delta
-        float dir=Math.signum(Physics.dot(normal,delta));
+        float dir=Math.signum(Mate.dot(normal,delta));
         float[] ocrn=new float[3];
         for(int i=0;i<3;i++)
             ocrn[i]=origen[i]- vertex[i]+dir*radio*normal[i];
 
-        float deltaNormal=Physics.dot(delta,normal);
+        float deltaNormal=Mate.dot(delta,normal);
         if( Math.abs(deltaNormal)<0.00001f )
             return false;   // movimiento paralelo al plano del triangulo?
 
         // d repesenta a cuantos deltas intersecta la esfera con el plano
-        float d=-Physics.dot(ocrn,normal)/deltaNormal;
+        float d=-Mate.dot(ocrn,normal)/deltaNormal;
         if(Math.abs(d)>1)
             return false;   // se aleja o no llego al plano
 
@@ -252,6 +176,7 @@ class Triangle
 
         float edgeSqrLen=Mate.dot(edge,edge);
         float dotDeltaEdge=Mate.dot(delta,edge);
+
         // Proyecciones del movimiento y del punto 0 sobre un plano perpendicular al edge que pasa por origen
         float[] pDelta=Mate.subsVectors(delta,Mate.multiplyVectorScalar(edge,dotDeltaEdge/edgeSqrLen));
         float[] pP0=Mate.subsVectors(p0,Mate.multiplyVectorScalar(edge,Mate.dot(Mate.subsVectors(p0,origen),edge)/edgeSqrLen));
@@ -261,15 +186,21 @@ class Triangle
         float[] cpp=Mate.subsVectors(origen,pP0);
         float C=Mate.dot(cpp, cpp)-radio*radio;
 
-        if(B>0) // Se aleja
+        if(B>0 || Mate.nearZero(A)) // Se aleja o no hay delta
             return Float.MAX_VALUE;
 
+        // d calculada en la Proyeccion sobre el plano
         float pd=Mate.minCuadraticRoot(A,B,C);
 
-        if(Float.isNaN(pd))  // No hay solucion
+        if(Float.isNaN(pd))  // No hay solución
             return Float.MAX_VALUE;
 
-        float d=(float)(pd*Math.sqrt(1+dotDeltaEdge/(edgeSqrLen*Math.sqrt(A))));
+        // Que significa que la raiz sea negativa?
+        //float d=(float)(pd*Math.sqrt(1+dotDeltaEdge/(edgeSqrLen*Math.sqrt(A))));
+        float d=(float)(pd*Math.sqrt(Mate.dot(delta,delta)));
+        if(Float.isNaN(d))  // what????
+            return Float.MAX_VALUE;
+
         float[] p=Mate.addVectors(origen,Mate.multiplyVectorScalar(delta,d));
 
         if(Mate.dot(Mate.subsVectors(p,p0),edge)<0)
@@ -300,38 +231,24 @@ class RigidFloor
         limInf=new float[3];
         limSup=new float[3];
 
-        count=e.mesh.caras.size();
+        count=e.mesh.totalFaceCount;
         bordes=new Triangle[count];
 
-        for(int i=0; i<count;i++)
-        {
-            transform(p1, mat, e.mesh.vertices.get(e.mesh.caras.get(i).v1).co);
-            transform(p2, mat, e.mesh.vertices.get(e.mesh.caras.get(i).v2).co);
-            transform(p3, mat, e.mesh.vertices.get(e.mesh.caras.get(i).v3).co);
-            bordes[i]=new Triangle(p1,p2,p3);
-            for(int z=0;z<3;z++) {
-                limInf[z] = Math.min(limInf[z], bordes[i].limInf[z]); // calculo de limite inferior
-                limSup[z] = Math.max(limSup[z], bordes[i].limSup[z]);  // calculo de limite superior
+        int j=0;
+
+        for( SubMesh sr: e.mesh.subReticula) {
+            for (int i = 0; i < count; i++) {
+                transform(p1, mat, e.mesh.vertices.get(sr.caras.get(i).v1).co);
+                transform(p2, mat, e.mesh.vertices.get(sr.caras.get(i).v2).co);
+                transform(p3, mat, e.mesh.vertices.get(sr.caras.get(i).v3).co);
+                bordes[j] = new Triangle(p1, p2, p3);
+                for (int z = 0; z < 3; z++) {
+                    limInf[z] = Math.min(limInf[z], bordes[i].limInf[z]); // calculo de limite inferior
+                    limSup[z] = Math.max(limSup[z], bordes[i].limSup[z]);  // calculo de limite superior
+                }
+                j++;
             }
         }
-    }
-
-    // calcula si un tringulo intersecta con una esfera y devuelve cuanto deberia moverse para evitarlo
-    public boolean old_test(float[] centro, float radio, float[] reaccion)
-    {
-        for(int i=0;i<3;i++)
-            reaccion[i]=0;
-
-        // Fuera de zona limite de influencia general, primer chequeo
-        for(int i=0;i<3;i++)
-            if(centro[i]+radio<limInf[i] || centro[i]-radio>limSup[i])
-                return false;
-
-        boolean rc=false;
-        for(int i=0; i<count;i++)
-            rc=rc||bordes[i].old_test(centro, radio, reaccion);
-
-        return rc;
     }
 
     // calcula algun tringulo intersecta con una esfera y devuelve cuanto deberia moverse para evitarlo
@@ -413,21 +330,6 @@ class RigidBody extends Entity {
     // ahora es seguro hacer la destruccion?
     public void destroy() {
         super.destroy();
-    }
-
-    public void old_applyDt(float dt) {
-        vel[0] += vel2apply[0];
-        if (vel2apply[1] > 0)
-            vel[1] += vel2apply[1];
-        vel[2] += vel2apply[2];
-        vel2apply[0] = vel2apply[1] = vel2apply[2] = 0;
-
-        vel[1] -= 9.8f * dt;   // aceleracion
-        addLocation(vel[0] * dt, vel[1] * dt, vel[2] * dt); // velocidad
-        addLocation(loc2apply[0], loc2apply[1], loc2apply[2]); // moviminto fijo
-        Log.d("MyApp", "vel=" + vel[1] + " dt=" + dt);
-        Log.d("MyApp", "Move:loc2apply=" + loc2apply[0] + " ; " + loc2apply[2]);
-        collision = false;
     }
 
     // calcula el momento y la gravedad del objeto antes de colisionar
@@ -610,18 +512,19 @@ class RigidBody extends Entity {
 
 class Physics {
     public ArrayList<RigidFloor> pisos = new ArrayList<RigidFloor>();
-    //private ArrayList<rigidBody> actores=new ArrayList<rigidBody>();;
 
+    // Prmero aplico los movimientos de los personajes, la inercia que tenian y la grabedad
+    // Despues detecto las colisiones entre los objetos dinamicos
+    // Finalmente veo que no hayan atravezado pardes
+    // los pasos 1 y 2 se hacen sobre REA de manera de conocer la ubicacion original
     public void testPhisics(SceneManager sm) {
-        RigidBody act1, act2;
+        float dt=sm.deltaTime();
 
-        // aplico momentos y calculo colisiones con los pisos y paredes para cada uno
-        Log.d("MyApp", "Move: testing");
-        for (int i = 0; i < sm.scenePhoto.size(); i++) {
-            Entity e = sm.scenePhoto.get(i).entityCopy;
-            if (e.isDinamic())
-                testBody(sm.scenePhoto, i, sm.deltaTime());
-        }
+        // aplico momentos, movimientos y gravedad
+        Log.d("MyApp", "Move: moving");
+        for( EntityPhoto ef : sm.scenePhoto )
+            if (ef.entityCopy.isDinamic())
+                ((RigidBody)(ef.entityCopy)).calcPysics(dt, ef.rea);
 
         //Log.d("MyApp", "Move: testing "+actores.size()+" actores");
         // evito colisiones entre los actores
@@ -638,16 +541,20 @@ class Physics {
                                 for (int l = 0; l < ((RigidBody) ef2.entityCopy).espacios.size(); l++) {
                                     BodySpace be2 = ((RigidBody) ef2.entityCopy).espacios.get(l);
                                     if(be2.performCollisionTest) {
-                                        float[] l1 = getSpaceLocationClone(sm.scenePhoto, i, k);
-                                        float[] l2 = getSpaceLocationClone(sm.scenePhoto, j, l);
+                                        float[] l1 = Mate.addVectors(getSpaceLocationClone(sm.scenePhoto, i, k), ef1.rea);
+                                        float[] l2 = Mate.addVectors(getSpaceLocationClone(sm.scenePhoto, j, l), ef2.rea);
                                         if (distTest(l1, be1.radius, l2, be2.radius)) {
                                             float D = (float) Math.sqrt((l1[0] - l2[0]) * (l1[0] - l2[0]) + (l1[2] - l2[2]) * (l1[2] - l2[2]));
                                             float d = be1.radius + be2.radius - D;
                                             float q = d / D;
                                             Log.d("MyApp", "Move: d=" + d);
                                             // no toda la diferencia, solo la diferencia del borde (restar radios)
-                                            ef1.entityCopy.addLocation(q * (l1[0] - l2[0]) / 2, 0, q * (l1[2] - l2[2]) / 2);
-                                            ef2.entityCopy.addLocation(q * (l2[0] - l1[0]) / 2, 0, q * (l2[2] - l1[2]) / 2);
+                                            ef1.rea[0]+=q * (l1[0] - l2[0]) / 2;
+                                            ef1.rea[1]+=q * (l1[1] - l2[1]) / 2;
+                                            ef1.rea[2]+=q * (l1[2] - l2[2]) / 2;
+                                            ef2.rea[0]+=q * (l2[0] - l1[0]) / 2;
+                                            ef2.rea[1]+=q * (l2[1] - l1[1]) / 2;
+                                            ef2.rea[2]+=q * (l2[2] - l1[2]) / 2;
                                         }
                                     }
                                 }
@@ -657,6 +564,15 @@ class Physics {
                 }
                 ((RigidBody) ef1.entityCopy).resetLoc2Apply();
             }
+        }
+
+        // calculo colisiones con los pisos y paredes para cada uno
+        Log.d("MyApp", "Move: testing2");
+
+        for (int i = 0; i < sm.scenePhoto.size(); i++) {
+            Entity e = sm.scenePhoto.get(i).entityCopy;
+            if (e.isDinamic())
+                testBody(sm.scenePhoto, i, sm.deltaTime(),sm.scenePhoto.get(i).rea);
         }
     }
 
@@ -669,8 +585,7 @@ class Physics {
 
         if (bs.type == enumSpaceType.boneAttached) {
             // posicion del hueso en rest, desde el root
-            for (int i = 0; i < 3; i++)
-                rl[i] = rb.mesh.huesos.get(bs.boneId).restMatrixFromRoot[12 + i];
+            System.arraycopy(rb.mesh.huesos.get(bs.boneId).restMatrixFromRoot, 12, rl, 0, 3);
 
             rl[3] = 1;
             // pocision desde el root que le da la accion (accion es movimiento relativo al rest).
@@ -685,15 +600,11 @@ class Physics {
     }
 
     // ojo que se puede correr mas de una vez por ciclo!!!
-    void testBody(List<EntityPhoto> sf, int entityNumber, float dt) {
-        float[] rea = new float[3];
+    void testBody(List<EntityPhoto> sf, int entityNumber, float dt, float[] rea) {
         RigidBody rb = (RigidBody) sf.get(entityNumber).entityCopy;
-        rb.calcPysics(dt, rea);
 
         for (RigidFloor rf : pisos) {
             for (int i = 0; i < rb.espacios.size(); i++) {
-                if(rb.id==1)
-                    rb.id=1;
                 if (rb.espacios.get(i).performCollisionTest && rf.test(rb.id, getSpaceLocationClone(sf, entityNumber, i), rea, rb.espacios.get(i).radius, dt))
                     rb.collision = true;
             }
@@ -726,7 +637,7 @@ class Physics {
     }
 
     // dot product de vectores de 3 dimensiones
-    public static float dot(float[] v1, float[] v2)
+    public static float dota(float[] v1, float[] v2)
     {
         return v1[0]*v2[0]+v1[1]*v2[1]+v1[2]*v2[2];
     }
@@ -760,8 +671,8 @@ class Physics {
         for(int i=0;i<3;i++)
             oc[i]=o[i]-c[i];
 
-        float uoc=dot(u,oc);
-        float s=x2(uoc)-dot(oc,oc)+x2(r);
+        float uoc=Mate.dot(u,oc);
+        float s=x2(uoc)-Mate.dot(oc,oc)+x2(r);
         // raiz es negativa => sin solucion => no pega en la esfera
         // uoc>0 intersecta en el segmento negativo del rayo => no pega adelante
 
@@ -842,14 +753,14 @@ class Physics {
             for(int i=0; i<rf.count;i++)
             {
                 Triangle t=rf.bordes[i];
-                float div=dot(t.normal, u);
+                float div=Mate.dot(t.normal, u);
 
                 if(Math.abs(div)>0.00001)
                 {
                     for(int j=0;j<3;j++)
                         co[j]=t.vertex[j]-o[j];
 
-                    float d=dot(co, t.normal)/div;
+                    float d=Mate.dot(co, t.normal)/div;
                     if(distance<0 || minDistance(distance,d)<distance)
                     {
                         float[] baryPos=new float[4];

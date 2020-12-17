@@ -5,7 +5,7 @@ import static java.lang.Float.NaN;
 public class Mate {
     public static float epsilon=0.0000000001f;
 
-    public static boolean isZero(float a)
+    public static boolean nearZero(float a)
     {
         return Math.abs(a)<epsilon;
     }
@@ -53,7 +53,7 @@ public class Mate {
 
     public static float minCuadraticRoot(float A, float B, float C) {
         float D = B * B - 4 * A * C;
-        if (isZero(A) || D < 0)
+        if (nearZero(A) || D < 0)
             return NaN;
 
         float sqrtD = (float) Math.sqrt(D);

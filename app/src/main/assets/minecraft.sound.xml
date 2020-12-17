@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<animations>
-	<animation name="Caminar">
-		<sounds>
-			<sound time="0.41" file="step.wav" right="0.5" left="0.2"/>
-			<sound time="1.22" file="step.wav" right="0.2" left="0.5"/>
-		</sounds>
-	</animation>
-</animations>

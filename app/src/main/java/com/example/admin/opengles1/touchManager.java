@@ -4,7 +4,6 @@ import android.util.Log;
 import android.view.MotionEvent;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 
 class touchField {
     boolean pressed;    // Si esta apretado o no
@@ -38,8 +37,8 @@ class touchField {
 
     public boolean evalUbi(float x, float y)
     {
-        int dw=ambiente.getInstance().displayw;
-        int dh=ambiente.getInstance().displayh;
+        int dw= Ambiente.getInstance().displayw;
+        int dh= Ambiente.getInstance().displayh;
         return x>dw*x1/100.0f && x<dw*x2/100.0f && y>dh*y1/100.0f && y<dh*y2/100.0f;
     }
 
@@ -126,15 +125,17 @@ public class touchManager {
 
     public void removeFields()
     {
-        for(int i=0; i<fields.size(); i++)
-           fields.remove(i);
+        fields.clear();
+        //for(int i=0; i<fields.size(); i++)
+        //   fields.remove(i);
     }
 
     public void removeField(int id)
     {
-        for(int i=0; i<fields.size(); i++)
-            if(fields.get(i).fieldId==id)
-                fields.remove(i);
+        fields.remove(id);
+        //for(int i=0; i<fields.size(); i++)
+        //    if(fields.get(i).fieldId==id)
+        //        fields.remove(i);
     }
 
     void dump()
