@@ -47,10 +47,10 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
         ent.addFixedSpace(0.5f,0f,0.5f,true,false);
         //ent.addBoneRelatedSpace(0.1f, 0.1f,"ball_r",0.09f, true, false);
         //ent.addBoneRelatedSpace(0.1f, 0.1f, "ball_l",0.09f, true, false);
-        ent.debug=false; ent.color[0]=1.0f;ent.color[1]=0.0f;ent.color[2]=0.0f;
+        ent.debug=true; ent.color[0]=1.0f;ent.color[1]=0.0f;ent.color[2]=0.0f;
         ent.setParent(scene.root);
         ent.setId(2);
-
+/*
         rob=new Robot("minecraft");
         rob.addFixedSpace(0.5f,0f,0.5f,true,false);
         rob.addBoneRelatedSpace(0.4f, 1.2f,"spine_01",0.0f, false, true);
@@ -61,6 +61,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
         rob.setParent(scene.root);
         rob.setLocation(3,0,10);
         rob.setId(1);
+*/
 
         followCam.setLocation(0,5,-5.0f);
         followCam.lookAt(new float[] {0,2.0f,1.0f},new float[]{0,1.0f,0});
@@ -70,7 +71,12 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
         c2.color[0]=0;c2.color[2]=0;
         c2.setLocation(0,-1,0);
         c2.setParent(scene.root);
-
+/*
+        Entity c3=new Entity("Tri");
+        c3.color[0]=0;c3.color[2]=0;
+        c3.setLocation(0,-2,0);
+        c3.setParent(scene.root);
+*/
         luz=new Entity("piramid");
         luz.color[0]=0;luz.color[2]=0;
         luz.setLocation(0,5,0);
@@ -83,12 +89,15 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
 
         rf=new RigidFloor(c2);
         scene.attachToPhisics(rf);
-
+/*
+        RigidFloor rf3=new RigidFloor(c3);
+        scene.attachToPhisics(rf3);
+*/
         cubeEnt=new RigidBody("piramid");
         cubeEnt.addFixedSpace(1.0f,0,0.0f, true, false);
-        cubeEnt.debug=false; cubeEnt.color[0]=0.0f;cubeEnt.color[1]=0.0f;
+        cubeEnt.debug=true; cubeEnt.color[0]=0.0f;cubeEnt.color[1]=0.0f;
         cubeEnt.setParent(scene.root);
-        cubeEnt.setLocation(1,5.0f,1.0f);
+        cubeEnt.setLocation(3.1f,5.0f,1.0f);   // 1 5 1
         cubeEnt.setId(3);
 
         touchManager tm=touchManager.getInstance();
@@ -148,9 +157,10 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
         long t2=System.currentTimeMillis();
 
         ent.makeItAlive(vMover, vAng, tm.getField(1).getClick(), deltaT);
+/*
         rob.makeItAlive(deltaT);
         rob.testShot(deltaT, punt);
-
+*/
         long t3=System.currentTimeMillis();
 
         // aplica el movimiento newtoniano a cada objeto

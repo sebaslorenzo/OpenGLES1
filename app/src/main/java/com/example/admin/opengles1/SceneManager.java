@@ -214,12 +214,14 @@ class Sceneable extends Movable
         float prod=Math.min(Math.max(Tx*Wx+Ty*Wy,-1.0f),1.0f);
         return -(float)Math.abs(Math.acos(prod))*Math.signum(Tx*Px+Ty*Py);
     }
+
     // orienta la entidad hacia la direccion Target que es tomada del touch. (direccion vista desde arriba)
     // Eje es la cara que representa el frente del objeto, SpeedR/T la velocidad de Rotacion y Translacion
     // deberia tener en cuenta a donde mira la camara no?
     // La camara mira a -z
 
-    public void goTo(float [] eje, float speedR, float speedT, float dt, float targetX, float targetY, Camera cam )
+    public void goTo(float [] eje, float speedR
+            , float speedT, float dt, float targetX, float targetY, Camera cam )
     {
         float[] ejeY = new float[3];
         ejeY[0]=ejeY[2]=0; ejeY[1]=1.0f;

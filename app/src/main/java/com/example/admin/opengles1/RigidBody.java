@@ -95,7 +95,7 @@ class Triangle
 
     // calcula si una esfera que parte de origen y se mueve delta intersecta con un triangulo, parte interna
     // devuelve la distancia recorida (% de delta) o Float.MAX_VALUE si no colisiona
-    public boolean getCollision2Triangle(int id, float[] origen, float[] delta, float radio, float dt)
+    public boolean getCollision2Triangle(int id, float[] origen, float[] delta, float radio, float dt, int cara)
     {
         // test de zona
         for (int i = 0; i < 3; i++) {
@@ -105,20 +105,29 @@ class Triangle
 
         // (O+d.U+-r.N-C).N=0   O=origen, C=punto del plano, r=radio, d=incognita distancia, U=direccion del mov, N=normal)
         // se despeja d=-(O-C+-r.N).N / U.N
+
         // dir compensa la direccion arbitraria de la normal respecto del delta
         float dir=Math.signum(Mate.dot(normal,delta));
-        float[] ocrn=new float[3];
-        for(int i=0;i<3;i++)
-            ocrn[i]=origen[i]- vertex[i]+dir*radio*normal[i];
-
-        float deltaNormal=Mate.dot(delta,normal);
+        float deltaNormal=Mate.dot(delta,Mate.multiplyVectorScalar(normal,dir));
         if( Math.abs(deltaNormal)<0.00001f )
             return false;   // movimiento paralelo al plano del triangulo?
 
+        float ocn=Mate.dot(Mate.subsVectors(origen,vertex),Mate.multiplyVectorScalar(normal,dir));
         // d repesenta a cuantos deltas intersecta la esfera con el plano
-        float d=-Mate.dot(ocrn,normal)/deltaNormal;
-        if(Math.abs(d)>1)
-            return false;   // se aleja o no llego al plano
+        float d=-(ocn+radio) / deltaNormal;
+        if(d>1) {
+            Log.d("MyApp", "Crash: ;E=L;F="+cara+";O="+origen[0]+";"+origen[1]+";"+origen[2]+";D="+delta[0]+";"+delta[1]+";"+delta[2]+";d="+d);
+            return false;   // no llego al plano
+        }
+
+        if(d<0) {  // intersecta pero yendo para atras, tengo que ver si estaba o no pasado del centro
+            // d2 repesenta a cuantos deltas intersecta el centro de la esfera con el plano
+            float d2 = -ocn / deltaNormal;
+            if (d2 < 0) {
+                Log.d("MyApp", "Crash: ;E=P;F=" + cara + ";O=" + origen[0] + ";" + origen[1] + ";" + origen[2] + ";D=" + delta[0] + ";" + delta[1] + ";" + delta[2] + ";d=" + d);
+                return false;   // el centro ya estaba pasado del plano, prefiero que sega de largo
+            }
+        }
 
         float[] cartePos=new float[4];  // cartesiano
         float[] baryPos=new float[4];   // baricentrico?
@@ -130,31 +139,34 @@ class Triangle
         // Convierto a coordenadas barycentricas
         Matrix.multiplyMV(baryPos,0,bMat,0,cartePos,0);
 
+        // QUe area estoy chequeando?
+        int edge=-1;    // default es adentr del triangulo
+        if(baryPos[0]<0)
+            edge=2;
+        else if(baryPos[0]+baryPos[1]>1)
+            edge=1;
+        if( baryPos[1]<0 )
+            edge=0;
+
         // fuera del triangulo o mas lejos que el radio
-        if(baryPos[0]<0) {
-            d=getCollisionDistance2Edge(id, origen, delta, radio, dt, 2);
-            if( d==Float.MAX_VALUE)
+        if(edge!=-1) {
+            d=getCollisionDistance2Edge(id, origen, delta, radio, dt, edge);
+            if( d==Float.MAX_VALUE) {
+                Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+origen[0]+";"+origen[1]+";"+origen[2]+";D="+delta[0]+";"+delta[1]+";"+delta[2]+";d="+d);
                 return false;
-        }
-        if(baryPos[0]+baryPos[1]>1) {
-            d = getCollisionDistance2Edge(id, origen, delta, radio, dt, 1);
-            if( d == Float.MAX_VALUE)
-                return false;
+            }
         }
 
-        if( baryPos[1]<0 ) {
-            d=getCollisionDistance2Edge(id, origen, delta, radio, dt,0);
-            if( d == Float.MAX_VALUE)
-                return false;
-        }
-
-        if(Math.abs(d)>1)
+        if(Math.abs(d)>1) {
+            Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+origen[0]+";"+origen[1]+";"+origen[2]+";D="+delta[0]+";"+delta[1]+";"+delta[2]+";d="+d);
             return false;   // se aleja o no llego al plano
+        }
 
         for (int i = 0; i < 3; i++)
-            delta[i] -= normal[i] * (1 - d) * deltaNormal;
+            delta[i] -= dir * normal[i] * (1 - d) * deltaNormal;
 
-        Log.d("MyApp", "Test: ID="+id+";Origen="+origen[1]+";Delta="+delta[0]+";"+delta[1]+";"+delta[2]+";Normal="+normal[1]+";DN="+deltaNormal+";Plano="+ vertex[1]+";radio="+radio+";d="+d);
+        Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+origen[0]+";"+origen[1]+";"+origen[2]+";D="+delta[0]+";"+delta[1]+";"+delta[2]+";d="+d);
+        Log.d("MyApp", "Test: ID="+id+";Edge="+edge+";Origen="+origen[1]+";Delta="+delta[0]+";"+delta[1]+";"+delta[2]+";Normal="+normal[1]+";DN="+deltaNormal+";Plano="+ vertex[1]+";radio="+radio+";d="+d);
 
         return true;
     }
@@ -264,7 +276,7 @@ class RigidFloor
         boolean collision=false;
 
         for(int i=0; i<count;i++)
-            collision|=bordes[i].getCollision2Triangle(id, origen, delta, radio, dt);
+            collision|=bordes[i].getCollision2Triangle(id, origen, delta, radio, dt, i);
 
 
         return collision;
