@@ -14,6 +14,7 @@ public class Robot extends Puppet {
     // let var=exp
     // add var,exp
     // goto exp,exp
+    // gotornd x1,y1,x2,y2
     // wait action1[,actionN]       hasta 4 acciones
     // print expr
     //getmsg type
@@ -21,8 +22,8 @@ public class Robot extends Puppet {
 
     final String script =
             "if estado=0 { let wt=time();add wt,5;wait parado;add estado,1;}"+
-            "if estado=1 { if time()>wt {goto 8,20; add estado,1}}"+
-            "if estado=2 { if dist()<0.5 {let wt=time();add wt,5;wait parado,Mirar,Tirar;add estado,1;}}"+
+            "if estado=1 { if time()>wt {rndgoto -21,-14,-3,0; add estado,1}}"+ // 8,20
+            "if estado=2 { if dist()<0.5 {let wt=time();add wt,1;wait parado,Mirar,Tirar;add estado,-1;}}"+
             "if estado=3 { if time()>wt {goto -3,2; add estado,1}}"+
             "if estado=4 { if dist()<0.5 {let wt=time();add wt,5;wait Tirar,Mirar;add estado,1;}}"+
             "if estado=5 { if time()>wt {goto -6,17; add estado,1}}"+
@@ -124,6 +125,20 @@ class prg{
                 Log.d("MyApp", "Code: goto "+getSentenceValue(sent, 0)+","+getSentenceValue(sent, 1));
                 commanded.estadoRob= Robot.robotState.yendo;
             }
+            if(sent.verb==token.rndgoto) {
+                float l1=getSentenceValue(sent, 0);
+                float l2=getSentenceValue(sent, 2);
+                float xy=(float)Math.random()*(l2-l1)+l1;
+                commanded.destino[0]=xy;
+
+                l1=getSentenceValue(sent, 1);
+                l2=getSentenceValue(sent, 3);
+                xy=(float)Math.random()*(l2-l1)+l1;
+                commanded.destino[2]=xy;
+
+                Log.d("MyApp", "Code: rndgoto "+commanded.destino[0]+","+commanded.destino[2]);
+                commanded.estadoRob= Robot.robotState.yendo;
+            }
             if(sent.verb==token.wait) {
                 commanded.idleAction.clear();
                 for(int j=0; j<sent.next;j++)
@@ -218,8 +233,17 @@ class prg{
             {
                 sentence sen=new sentence(token.gotoxy);
                 commands.add(sen);
-                if(getNumLit(sen) && follows(",") & getNumLit(sen) & getEol())
+                if(getNumLit(sen) && follows(",") && getNumLit(sen) & getEol())
                     Log.d("MyApp", "Code: goto(" + sen.val[0].asText() + "," + sen.val[1].asText() + ")");
+                else
+                    error = true;
+            }
+            else if( follows("rndgoto") )
+            {
+                sentence sen=new sentence(token.rndgoto);
+                commands.add(sen);
+                if(getNumLit(sen) && follows(",") && getNumLit(sen) && follows(",") && getNumLit(sen) && follows(",") && getNumLit(sen) & getEol())
+                    Log.d("MyApp", "Code: rndgoto(" + sen.val[0].asText() + "," + sen.val[1].asText() + "," + sen.val[2].asText() + "," + sen.val[3].asText() + ")");
                 else
                     error = true;
             }
@@ -456,7 +480,7 @@ class prg{
 
 enum valueType {lit,num,token,empty,ind}
 
-enum token {let, add, when, readmsg, wait, gotoxy, print, gt, gte, less, lesseq, eq, noteq,time, distance, actionend, rnd}
+enum token {let, add, when, readmsg, wait, gotoxy, rndgoto, print, gt, gte, less, lesseq, eq, noteq,time, distance, actionend, rnd}
 
 class value{
     valueType contentType;

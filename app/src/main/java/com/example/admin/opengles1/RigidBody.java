@@ -115,17 +115,18 @@ class Triangle
         float ocn=Mate.dot(Mate.subsVectors(origen,vertex),Mate.multiplyVectorScalar(normal,dir));
         // d repesenta a cuantos deltas intersecta la esfera con el plano
         float d=-(ocn+radio) / deltaNormal;
+        float d2 = -ocn / deltaNormal;
+
         if(d>1) {
-            Log.d("MyApp", "Crash: ;E=L;F="+cara+";O="+origen[0]+";"+origen[1]+";"+origen[2]+";D="+delta[0]+";"+delta[1]+";"+delta[2]+";d="+d);
+            Log.d("MyApp", "Crash: ;E=L;F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2);
             return false;   // no llego al plano
         }
 
         if(d<0) {  // intersecta pero yendo para atras, tengo que ver si estaba o no pasado del centro
             // d2 repesenta a cuantos deltas intersecta el centro de la esfera con el plano
-            float d2 = -ocn / deltaNormal;
             if (d2 < 0) {
-                Log.d("MyApp", "Crash: ;E=P;F=" + cara + ";O=" + origen[0] + ";" + origen[1] + ";" + origen[2] + ";D=" + delta[0] + ";" + delta[1] + ";" + delta[2] + ";d=" + d);
-                return false;   // el centro ya estaba pasado del plano, prefiero que sega de largo
+                Log.d("MyApp", "Crash: ;E=P;F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2);
+                return false;   // el centro ya estaba pasado del plano, prefiero que siga de largo
             }
         }
 
@@ -152,25 +153,27 @@ class Triangle
         if(edge!=-1) {
             d=getCollisionDistance2Edge(id, origen, delta, radio, dt, edge);
             if( d==Float.MAX_VALUE) {
-                Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+origen[0]+";"+origen[1]+";"+origen[2]+";D="+delta[0]+";"+delta[1]+";"+delta[2]+";d="+d);
+                Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2);
                 return false;
             }
-        }
-
-        if(Math.abs(d)>1) {
-            Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+origen[0]+";"+origen[1]+";"+origen[2]+";D="+delta[0]+";"+delta[1]+";"+delta[2]+";d="+d);
-            return false;   // se aleja o no llego al plano
+            if(Math.abs(d)>1) { // ver que pasa para los negativos ...
+                Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2);
+                return false;   // se aleja o no llego al plano
+            }
         }
 
         for (int i = 0; i < 3; i++)
             delta[i] -= dir * normal[i] * (1 - d) * deltaNormal;
 
-        Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+origen[0]+";"+origen[1]+";"+origen[2]+";D="+delta[0]+";"+delta[1]+";"+delta[2]+";d="+d);
-        Log.d("MyApp", "Test: ID="+id+";Edge="+edge+";Origen="+origen[1]+";Delta="+delta[0]+";"+delta[1]+";"+delta[2]+";Normal="+normal[1]+";DN="+deltaNormal+";Plano="+ vertex[1]+";radio="+radio+";d="+d);
+        Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2+";x");
 
         return true;
     }
 
+    String float3(float[] f)
+    {
+        return String.valueOf(f[0])+";"+String.valueOf(f[1])+";"+String.valueOf(f[2]);
+    }
     // calcula si una esfera que parte de origen y se mueve delta intersecta con un triangulo, parte interna
     // devuelve la distancia recorida (% de delta) o Float.MAX_VALUE si no colisiona
     public float getCollisionDistance2Edge(int id, float[] origen, float[] delta, float radio, float dt, int edgeId)
@@ -596,13 +599,7 @@ class Physics {
         BodySpace bs = rb.espacios.get(spaceNumber);
 
         if (bs.type == enumSpaceType.boneAttached) {
-            // posicion del hueso en rest, desde el root
-            System.arraycopy(rb.mesh.huesos.get(bs.boneId).restMatrixFromRoot, 12, rl, 0, 3);
-
-            rl[3] = 1;
-            // pocision desde el root que le da la accion (accion es movimiento relativo al rest).
-            Matrix.multiplyMV(tmp, 0, sf.get(entityNumber).skeletonCopy, 16 * bs.boneId, rl, 0);
-            Matrix.multiplyMV(rl, 0, sf.get(entityNumber).entityCopy.getWorldMatrixClone(), 0, tmp, 0);
+            getGlobalPositionFromBone(bs.boneId, sf.get(entityNumber).skeletonCopy,sf.get(entityNumber).entityCopy, rl);
             rl[1] += bs.yShift;
         } else {
             rl = rb.getWorldLocationClone();
@@ -610,6 +607,21 @@ class Physics {
         }
         return rl;
     }
+
+    // devuelve la posicion lobal de un hueso en particular
+    void getGlobalPositionFromBone(int boneId, float[] sk, Entity ent, float[] pos)
+    {
+        float[] tmp = new float[4];
+
+        // posicion del hueso en rest, desde el root
+        System.arraycopy(ent.mesh.huesos.get(boneId).restMatrixFromRoot, 12, pos, 0, 3);
+
+        pos[3] = 1;
+        // pocision desde el root que le da la accion (accion es movimiento relativo al rest).
+        Matrix.multiplyMV(tmp, 0, sk, 16 * boneId, pos, 0);
+        Matrix.multiplyMV(pos, 0, ent.getWorldMatrixClone(), 0, tmp, 0);
+    }
+
 
     // ojo que se puede correr mas de una vez por ciclo!!!
     void testBody(List<EntityPhoto> sf, int entityNumber, float dt, float[] rea) {
