@@ -171,6 +171,11 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {   // extends touch
         if(scene.phy!=null)
             scene.phy.testPhisics(scene);
 
+        EntityPhoto ef=scene.scenePhoto.get(0);
+        float[] pos=new float[4];
+        scene.phy.getGlobalPositionFromBone(ent.mesh.getBoneIdByName("ball_r"), ef.skeletonCopy, ef.entityCopy, pos);
+        Log.d("MyApp", "ball_r: "+pos[0]+";"+pos[1]+";"+pos[2]);
+
         long t4=System.currentTimeMillis();
         Log.d("MyApp", "Time: "+(t1-t0)+":"+(t2-t1)+":"+(t3-t2)+":"+(t4-t3));
 

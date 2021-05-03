@@ -409,7 +409,7 @@ public class SceneManager {
                     Matrix.multiplyMM(scratch, 0, pRotPos, 0, e.getMatrixClone(), 0);
                     e.addTime(deltatime);
                     float[] matHuesos = new float[16 * e.mesh.huesos.size()];
-                    e.getAnimMatrix(matHuesos, false);  // no interpola entre frames, toma el mas cercano
+                    e.getAnimMatrix(matHuesos, true);  // no interpola entre frames, toma el mas cercano
                     scenePhoto.add(new EntityPhoto(e, scratch.clone(), matHuesos));
                     //objetos.add(((entity) c));
                     //matrices.add(scratch.clone());

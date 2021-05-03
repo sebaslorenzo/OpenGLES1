@@ -149,21 +149,20 @@ class Triangle
         if( baryPos[1]<0 )
             edge=0;
 
-        // fuera del triangulo o mas lejos que el radio
-        if(edge!=-1) {
-            d=getCollisionDistance2Edge(id, origen, delta, radio, dt, edge);
-            if( d==Float.MAX_VALUE) {
-                Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2);
-                return false;
-            }
-            if(Math.abs(d)>1) { // ver que pasa para los negativos ...
-                Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2);
-                return false;   // se aleja o no llego al plano
-            }
+        if(edge==-1)    // dentro del triangulo
+        {
+            for (int i = 0; i < 3; i++)
+                delta[i] -= dir * normal[i] * (1 - d) * deltaNormal;
+
+            Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2+";x");
+            return true;
         }
 
-        for (int i = 0; i < 3; i++)
-            delta[i] -= dir * normal[i] * (1 - d) * deltaNormal;
+        d=getCollisionDistance2Edge(id, origen, delta, radio, dt, edge);
+        if( d==Float.MAX_VALUE) {
+            Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2);
+            return false;
+        }
 
         Log.d("MyApp", "Crash: ;E="+edge+";F="+cara+";O="+float3(origen)+";D="+float3(delta)+";d="+d+";d2="+d2+";x");
 
@@ -201,28 +200,61 @@ class Triangle
         float[] cpp=Mate.subsVectors(origen,pP0);
         float C=Mate.dot(cpp, cpp)-radio*radio;
 
-        if(B>0 || Mate.nearZero(A)) // Se aleja o no hay delta
-            return Float.MAX_VALUE;
+        //if(B>0 || Mate.nearZero(A)) // Se aleja o no hay delta
+        //    return Float.MAX_VALUE;
 
         // d calculada en la Proyeccion sobre el plano
         float pd=Mate.minCuadraticRoot(A,B,C);
 
-        if(Float.isNaN(pd))  // No hay solución
+        if(Float.isNaN(pd))  // No hay solución, no choca nunca
             return Float.MAX_VALUE;
 
-        // Que significa que la raiz sea negativa?
-        //float d=(float)(pd*Math.sqrt(1+dotDeltaEdge/(edgeSqrLen*Math.sqrt(A))));
         float d=(float)(pd*Math.sqrt(Mate.dot(delta,delta)));
-        if(Float.isNaN(d))  // what????
+        if(Float.isNaN(d))  // No deberia pasar
             return Float.MAX_VALUE;
 
+        // p es el punto del centro del cuerpo al chocar con el fleje
         float[] p=Mate.addVectors(origen,Mate.multiplyVectorScalar(delta,d));
 
+        // fuera del tramo
         if(Mate.dot(Mate.subsVectors(p,p0),edge)<0)
             return Float.MAX_VALUE;
-
+        // fuera del tramo
         if(Mate.dot(Mate.subsVectors(p,p1),edge)>0)
             return Float.MAX_VALUE;
+        // ya viene chocado y ya esta pasado del centro => prefiero no levantar colision
+        if(d<0 && Mate.dot(Mate.subsVectors(p,origen),delta)<0)
+            return Float.MAX_VALUE;
+        // no llega a chocar
+        if(d>1)
+            return Float.MAX_VALUE;
+
+        // deflecta es un vector normalizado que apunta a donde se corre el objeto por la colision
+        float[] deflecta=Mate.normalizeApplied(Mate.crossProduct(edge,delta));
+
+        // Necesito determinar para que lado mando la defleccion
+        if(Mate.dot(deflecta,Mate.subsVectors(p1,origen))>0)
+            Mate.multiplyVectorScalarApplied(deflecta,-1);
+
+        //  resultado teorico final
+        float[] finale=Mate.addVectors(origen,delta);
+
+        // shift es un vector que mide la distancia del punto final al fleje en el sentido de deflecta
+        float[] shift=Mate.multiplyVectorScalar(deflecta,Mate.dot(deflecta,Mate.subsVectors(finale,p1)));
+
+        // se paso del eje, corresponde deflectar completa la distancia del radio MAL
+        if(Mate.dot(Mate.subsVectors(finale,p1),delta)<0)
+        {
+            // corro lo que le faltaba al punto de entrada
+            Mate.subsVectorsApplied(Mate.addVectorsApplied(delta, Mate.multiplyVectorScalar(deflecta,radio)),shift);
+        }
+        else    // calcular cuanto se deflecta
+        {
+            float[] shift2=Mate.normalizeApplied(Mate.crossProduct(edge,deflecta));
+            float a=(float)Math.acos(Mate.dot(shift2,Mate.subsVectors(finale,p1))/radio);
+            float b=radio*(float)Math.sin(a);
+            Mate.subsVectorsApplied(Mate.addVectorsApplied(delta, Mate.multiplyVectorScalar(deflecta,b*radio)),shift);
+        }
 
         Log.d("MyApp", "TestEdge: ID="+id+";d="+d);
 
